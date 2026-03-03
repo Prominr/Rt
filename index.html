@@ -82,7 +82,7 @@
 
     .url-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto auto auto auto;
+      grid-template-columns: minmax(0, 1fr) auto auto auto auto auto auto;
       gap: 8px;
       align-items: center;
     }
@@ -352,7 +352,7 @@
       }
 
       .url-row {
-        grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+        grid-template-columns: minmax(0, 1fr) auto auto auto auto auto;
       }
 
       .hide-mobile {
@@ -368,6 +368,7 @@
       <div class="url-row">
         <input id="url-input" type="text" autocomplete="off" spellcheck="false" placeholder="Enter URL (example.com)" />
         <button id="go-btn" class="btn btn-primary">Go</button>
+        <button id="refresh-btn" class="btn" title="Refresh current tab (Shift+Click = hard refresh)">Refresh</button>
         <button id="new-tab-btn" class="btn">New</button>
         <button id="home-btn" class="btn">Home</button>
         <button id="ai-btn" class="btn">AI Helper</button>
@@ -433,6 +434,7 @@
       const dom = {
         urlInput: document.getElementById("url-input"),
         goBtn: document.getElementById("go-btn"),
+        refreshBtn: document.getElementById("refresh-btn"),
         newTabBtn: document.getElementById("new-tab-btn"),
         homeBtn: document.getElementById("home-btn"),
         aiBtn: document.getElementById("ai-btn"),
@@ -575,6 +577,16 @@
         }
 
         return parsed.origin === window.location.origin && parsed.pathname === "/proxy";
+      }
+
+      function withCacheBust(url) {
+        try {
+          const parsed = new URL(url);
+          parsed.searchParams.set("_hub_reload", String(Date.now()));
+          return parsed.toString();
+        } catch (_error) {
+          return url;
+        }
       }
 
       function toFrameUrl(url) {
@@ -747,6 +759,13 @@
                 margin: 0;
                 color: #95a4c0;
               }
+              .credit {
+                color: #c6e6ff;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                font-size: 0.74rem;
+                font-weight: 700;
+              }
               .quick-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -797,6 +816,7 @@
             <section class="home">
               <div>
                 <h1>Quick Launch</h1>
+                <p class="credit">by Omari</p>
                 <p>Select a site below or type one in the URL bar.</p>
               </div>
               <div class="quick-grid">${cards}</div>
@@ -1600,6 +1620,35 @@
         });
       }
 
+      function refreshActiveTab({ hard = false } = {}) {
+        const activeTab = getActiveTab();
+        if (!activeTab) {
+          return;
+        }
+
+        if (activeTab.home) {
+          dom.urlInput.value = "";
+          renderHome();
+          return;
+        }
+
+        if (activeTab.helper) {
+          dom.urlInput.value = "";
+          renderHelper();
+          return;
+        }
+
+        if (activeTab.external) {
+          dom.urlInput.value = activeTab.url;
+          renderExternalNotice(activeTab.url);
+          return;
+        }
+
+        dom.urlInput.value = activeTab.url;
+        const targetUrl = hard ? withCacheBust(activeTab.url) : activeTab.url;
+        renderSite(targetUrl);
+      }
+
       function navigate(rawUrl, newTab) {
         const normalized = normalizeUserUrl(rawUrl);
         if (!normalized) {
@@ -1801,6 +1850,10 @@
             event.preventDefault();
             navigate(dom.urlInput.value, false);
           }
+        });
+
+        dom.refreshBtn.addEventListener("click", (event) => {
+          refreshActiveTab({ hard: !!event.shiftKey });
         });
 
         dom.homeBtn.addEventListener("click", createHomeTab);
