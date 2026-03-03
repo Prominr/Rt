@@ -1,0 +1,12 @@
+{
+  "name": "portal-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-file browser hub served by a lightweight Node server.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
