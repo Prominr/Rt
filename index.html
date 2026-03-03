@@ -374,7 +374,7 @@
         <button id="popout-btn" class="btn hide-mobile">Pop Out</button>
       </div>
       <div class="right-tools">
-        <span id="railway-status" class="status" data-state="online">Direct mode</span>
+        <span id="railway-status" class="status" data-state="online">Proxy mode</span>
         <button id="panic-btn" class="btn btn-danger">Panic</button>
         <button id="settings-btn" class="btn">Settings</button>
       </div>
@@ -402,7 +402,7 @@
       </div>
 
       <p class="tiny">Hotkeys: <span class="kbd">Esc</span> or <span class="kbd">`</span> triggers panic redirect.</p>
-      <p class="tiny">No proxy mode: sites load inside the frame. Some sites may still block iframe embedding.</p>
+      <p class="tiny">Built-in proxy mode: many blocked sites can load in-frame, but some advanced apps may still fail.</p>
 
       <div class="settings-actions">
         <button id="close-settings-btn" class="btn">Close</button>
@@ -455,6 +455,7 @@
       let activeTabId = "";
       let tabSeed = 0;
       let contentFrame = null;
+      const PROXY_PREFIX = "/proxy?url=";
 
       function loadSettings() {
         try {
@@ -554,14 +555,22 @@
         }
       }
 
+      function toProxyFrameUrl(url) {
+        return `${PROXY_PREFIX}${encodeURIComponent(url)}`;
+      }
+
       function toFrameUrl(url) {
+        if (/^about:blank$/i.test(url)) {
+          return "about:blank";
+        }
+
         if (!isYouTubeUrl(url)) {
-          return url;
+          return toProxyFrameUrl(url);
         }
 
         const embedUrl = getYouTubeEmbedUrl(url);
         if (!embedUrl) {
-          return url;
+          return toProxyFrameUrl(url);
         }
 
         return embedUrl;
@@ -1035,7 +1044,7 @@
                     tips.push("Paste a direct YouTube video URL like youtube.com/watch?v=... or youtu.be/... for best in-frame playback.");
                   }
                   if (text.includes("iframe") || text.includes("blocked") || text.includes("blank")) {
-                    tips.push("If a site stays blank, it is likely blocking iframes with security headers. Try another source or open that destination directly in a browser tab.");
+                    tips.push("This hub uses a built-in proxy to improve compatibility, but some sites still break due heavy anti-bot scripts or unsupported browser APIs.");
                   }
                   if (text.includes("panic") || text.includes("escape") || text.includes("hotkey")) {
                     tips.push("Set your Panic Redirect URL in Settings. Then press Esc or backtick to instantly leave the current page.");
@@ -1461,7 +1470,7 @@
       }
 
       function setDirectModeStatus() {
-        setRailwayStatus("online", "Direct internet mode");
+        setRailwayStatus("online", "Built-in proxy mode");
       }
 
       async function initializeBlankHost() {
@@ -1577,7 +1586,13 @@
         applyTabCloak();
         bindEvents();
         await initializeBlankHost();
-        createHomeTab();
+
+        if (!tabs.length) {
+          createHomeTab();
+        } else if (activeTabId) {
+          activateTab(activeTabId);
+        }
+
         setDirectModeStatus();
       }
 

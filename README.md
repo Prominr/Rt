@@ -10,6 +10,12 @@ npm start
 
 Open `http://localhost:8000`.
 
+## Built-in proxy mode
+
+- The app now routes most URLs through `/proxy?url=...` so more sites can render in-frame.
+- YouTube direct video links still use the `youtube-nocookie` embed path.
+- Some sites can still fail due anti-bot checks, service workers, account security flows, or browser API limits.
+
 ## Deploy on Koyeb
 
 This repo is ready for Koyeb deployment with a Dockerfile.
