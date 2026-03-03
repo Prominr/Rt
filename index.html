@@ -556,7 +556,7 @@
       }
 
       function toProxyFrameUrl(url) {
-        return `${PROXY_PREFIX}${encodeURIComponent(url)}`;
+        return new URL(`${PROXY_PREFIX}${encodeURIComponent(url)}`, window.location.href).toString();
       }
 
       function toFrameUrl(url) {
@@ -925,6 +925,37 @@
                 border-radius: 999px;
                 background: rgba(255, 255, 255, 0.06);
               }
+              .bug-box {
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 10px;
+                background: rgba(8, 13, 22, 0.85);
+                padding: 10px;
+                display: grid;
+                gap: 8px;
+              }
+              .bug-box h3 {
+                margin: 0;
+                font-size: 0.9rem;
+              }
+              .bug-log {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: grid;
+                gap: 6px;
+                max-height: 160px;
+                overflow: auto;
+              }
+              .bug-log li {
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 10px;
+                padding: 7px 9px;
+                background: rgba(10, 16, 28, 0.9);
+                font-size: 0.84rem;
+              }
               .file-input {
                 border: 1px dashed rgba(255, 255, 255, 0.22);
                 border-radius: 10px;
@@ -989,6 +1020,16 @@
                     <button class="chip" type="button" data-prompt="Why does a site show blank in iframe?">Iframe blocked?</button>
                     <button class="chip" type="button" data-prompt="Show me a fast workflow for tabs and panic key.">Fast workflow</button>
                   </div>
+
+                  <div class="bug-box">
+                    <h3>Bug Fix AI</h3>
+                    <p class="muted">Runs local diagnostics and can safely reload the hub if core parts break.</p>
+                    <div class="actions">
+                      <button id="diag-btn" type="button">Run Diagnostics</button>
+                      <button id="autofix-btn" class="primary" type="button">Auto Fix</button>
+                    </div>
+                    <ul id="bug-log" class="bug-log"></ul>
+                  </div>
                 </section>
 
                 <section class="panel">
@@ -1027,6 +1068,9 @@
                 const statBrightness = document.getElementById("stat-brightness");
                 const statContrast = document.getElementById("stat-contrast");
                 const imageSummary = document.getElementById("image-summary");
+                const diagBtn = document.getElementById("diag-btn");
+                const autoFixBtn = document.getElementById("autofix-btn");
+                const bugLog = document.getElementById("bug-log");
 
                 function addMessage(role, text) {
                   const item = document.createElement("div");
@@ -1044,7 +1088,10 @@
                     tips.push("Paste a direct YouTube video URL like youtube.com/watch?v=... or youtu.be/... for best in-frame playback.");
                   }
                   if (text.includes("iframe") || text.includes("blocked") || text.includes("blank")) {
-                    tips.push("This hub uses a built-in proxy to improve compatibility, but some sites still break due heavy anti-bot scripts or unsupported browser APIs.");
+                    tips.push("This hub uses a built-in proxy to improve compatibility, but some sites still break due to heavy anti-bot scripts or unsupported browser APIs.");
+                  }
+                  if (text.includes("bug") || text.includes("error") || text.includes("broken") || text.includes("not work")) {
+                    tips.push("Use Bug Fix AI below: run Diagnostics first, then Auto Fix for safe recovery if core parts are missing.");
                   }
                   if (text.includes("panic") || text.includes("escape") || text.includes("hotkey")) {
                     tips.push("Set your Panic Redirect URL in Settings. Then press Esc or backtick to instantly leave the current page.");
@@ -1079,6 +1126,94 @@
                   input.focus();
                 }
 
+                function getHubWindow() {
+                  try {
+                    if (top && top.document && top.document.getElementById("blank-host")) {
+                      return top;
+                    }
+                  } catch (_error) {
+                  }
+
+                  try {
+                    if (window.opener && window.opener.document && window.opener.document.getElementById("blank-host")) {
+                      return window.opener;
+                    }
+                  } catch (_error) {
+                  }
+
+                  return null;
+                }
+
+                function addBugEntry(label, value) {
+                  if (!bugLog) {
+                    return;
+                  }
+
+                  const item = document.createElement("li");
+                  const left = document.createElement("span");
+                  const right = document.createElement("strong");
+                  left.textContent = label;
+                  right.textContent = value;
+                  item.append(left, right);
+                  bugLog.appendChild(item);
+                }
+
+                function runDiagnostics() {
+                  if (!bugLog) {
+                    return [];
+                  }
+
+                  bugLog.innerHTML = "";
+                  const hubWindow = getHubWindow();
+                  if (!hubWindow) {
+                    addBugEntry("Hub access", "Unavailable");
+                    addBugEntry("Tip", "Open helper inside main hub tab");
+                    return [];
+                  }
+
+                  const hubDoc = hubWindow.document;
+                  const statusEl = hubDoc.getElementById("railway-status");
+                  const blankHost = hubDoc.getElementById("blank-host");
+                  const siteFrame = blankHost && blankHost.contentDocument ? blankHost.contentDocument.getElementById("site-frame") : null;
+                  const aiButton = hubDoc.getElementById("ai-btn");
+
+                  const rows = [
+                    ["Mode", statusEl ? (statusEl.textContent.trim() || "Unknown") : "Missing"],
+                    ["Outer frame", blankHost ? "OK" : "Missing"],
+                    ["Inner frame", siteFrame ? "OK" : "Missing"],
+                    ["AI button", aiButton ? "OK" : "Missing"]
+                  ];
+
+                  rows.forEach(([label, value]) => addBugEntry(label, value));
+                  return rows;
+                }
+
+                function runAutoFix() {
+                  const rows = runDiagnostics();
+                  const missingFound = rows.some(([, value]) => /missing/i.test(String(value)));
+
+                  if (!rows.length) {
+                    addMessage("assistant", "Bug Fix AI: I could not access the main hub context from this tab.");
+                    return;
+                  }
+
+                  if (!missingFound) {
+                    addMessage("assistant", "Bug Fix AI: No critical missing parts found. If a website still fails, it is likely blocked by anti-bot or login security.");
+                    return;
+                  }
+
+                  const hubWindow = getHubWindow();
+                  if (!hubWindow) {
+                    addMessage("assistant", "Bug Fix AI: Could not reach the main hub window for auto-fix.");
+                    return;
+                  }
+
+                  addMessage("assistant", "Bug Fix AI: I found missing core pieces. Applying safe recovery by reloading the hub now...");
+                  setTimeout(() => {
+                    hubWindow.location.reload();
+                  }, 250);
+                }
+
                 askBtn.addEventListener("click", askHelper);
                 clearBtn.addEventListener("click", () => {
                   log.innerHTML = "";
@@ -1099,6 +1234,14 @@
                     askHelper();
                   });
                 });
+
+                if (diagBtn) {
+                  diagBtn.addEventListener("click", runDiagnostics);
+                }
+
+                if (autoFixBtn) {
+                  autoFixBtn.addEventListener("click", runAutoFix);
+                }
 
                 function analyzeImage(img) {
                   const width = img.naturalWidth || img.width;
@@ -1200,7 +1343,7 @@
                   reader.readAsDataURL(file);
                 });
 
-                addMessage("assistant", "I am your built-in helper. Ask me how to use this hub, or upload an image for quick checks.");
+                addMessage("assistant", "I am your built-in helper. Ask me how to use this hub, upload an image, or run Bug Fix AI diagnostics.");
               })();
             <\/script>
           </body>
