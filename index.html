@@ -455,6 +455,7 @@
       let activeTabId = "";
       let tabSeed = 0;
       let contentFrame = null;
+      let renderSeed = 0;
       const PROXY_PREFIX = "/proxy?url=";
 
       function loadSettings() {
@@ -557,6 +558,23 @@
 
       function toProxyFrameUrl(url) {
         return new URL(`${PROXY_PREFIX}${encodeURIComponent(url)}`, window.location.href).toString();
+      }
+
+      function parseUrlSafe(url) {
+        try {
+          return new URL(url, window.location.href);
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      function isProxyTargetUrl(url) {
+        const parsed = parseUrlSafe(url);
+        if (!parsed) {
+          return false;
+        }
+
+        return parsed.origin === window.location.origin && parsed.pathname === "/proxy";
       }
 
       function toFrameUrl(url) {
@@ -1429,13 +1447,106 @@
         `;
       }
 
-      function renderSite(url) {
+      async function renderSite(url) {
         if (!contentFrame) {
           return;
         }
 
-        contentFrame.removeAttribute("srcdoc");
-        contentFrame.src = toFrameUrl(url);
+        const targetUrl = toFrameUrl(url);
+        const currentRender = ++renderSeed;
+
+        if (!isProxyTargetUrl(targetUrl)) {
+          contentFrame.removeAttribute("srcdoc");
+          contentFrame.src = targetUrl;
+          return;
+        }
+
+        try {
+          const response = await fetch(targetUrl, { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error(`Proxy request failed (${response.status})`);
+          }
+
+          const html = await response.text();
+          if (currentRender !== renderSeed) {
+            return;
+          }
+
+          contentFrame.removeAttribute("src");
+          contentFrame.srcdoc = html;
+        } catch (error) {
+          if (currentRender !== renderSeed) {
+            return;
+          }
+
+          const safeUrl = escapeHtml(url);
+          const safeError = escapeHtml(error && error.message ? error.message : "Unknown error");
+          contentFrame.removeAttribute("src");
+          contentFrame.srcdoc = `
+            <!doctype html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <style>
+                * { box-sizing: border-box; }
+                body {
+                  margin: 0;
+                  min-height: 100vh;
+                  display: grid;
+                  place-items: center;
+                  font-family: "Space Grotesk", system-ui, sans-serif;
+                  color: #e8eef8;
+                  background:
+                    radial-gradient(900px 420px at 10% -8%, #1b3058 0%, transparent 60%),
+                    radial-gradient(900px 460px at 98% 0%, #0d2a4e 0%, transparent 60%),
+                    linear-gradient(180deg, #060a12 0%, #090f1c 100%);
+                  padding: 24px;
+                }
+                .card {
+                  width: min(720px, 100%);
+                  border: 1px solid rgba(255, 255, 255, 0.1);
+                  border-radius: 16px;
+                  background: rgba(12, 18, 30, 0.9);
+                  padding: 18px;
+                  display: grid;
+                  gap: 10px;
+                }
+                .muted { color: #95a4c0; }
+                code {
+                  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                  font-size: 0.82rem;
+                  word-break: break-word;
+                }
+                .actions {
+                  display: flex;
+                  gap: 8px;
+                  flex-wrap: wrap;
+                }
+                .btn {
+                  color: #c6e6ff;
+                  text-decoration: none;
+                  border: 1px solid rgba(87, 185, 255, 0.55);
+                  background: rgba(87, 185, 255, 0.2);
+                  border-radius: 10px;
+                  padding: 8px 10px;
+                  width: fit-content;
+                }
+              </style>
+            </head>
+            <body>
+              <section class="card">
+                <strong>Failed to load this site in-frame</strong>
+                <span class="muted">Proxy request failed before rendering. Try opening in a new tab or retry.</span>
+                <code>${safeError}</code>
+                <div class="actions">
+                  <a class="btn" href="${safeUrl}" target="_blank" rel="noopener noreferrer">Open site directly</a>
+                </div>
+              </section>
+            </body>
+            </html>
+          `;
+        }
       }
 
       function activateTab(tabId) {
@@ -1586,6 +1697,11 @@
         }
 
         const target = activeTab && !activeTab.home ? toFrameUrl(activeTab.url) : "about:blank";
+        if (isProxyTargetUrl(target)) {
+          popup.location.replace(target);
+          return;
+        }
+
         const popupTitle = escapeHtml(settings.cloakTitle || DEFAULT_SETTINGS.cloakTitle);
         const popupIcon = escapeHtml(settings.cloakFavicon || DEFAULT_SETTINGS.cloakFavicon);
         const popupSrc = escapeHtml(target);
